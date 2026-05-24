@@ -15,7 +15,7 @@ describe('Client', () => {
             },
             handler: async () => 'ok',
         });
-        expect(client.getTools()).toHaveLength(1);
+        expect(client.getTools()).toHaveLength(4); // 3 visible builtins + test_tool
     });
 });
 
