@@ -13,7 +13,7 @@ import type {
     SkillDefinition,
     ToolDefinition,
 } from './types';
-import { builtinTools } from './tools';
+import { builtinTools, INTERNAL_TOOLS } from './tools';
 
 // ─── Provider Defaults ────────────────────────────────────────────────────────
 
@@ -47,6 +47,7 @@ export class Client {
     private readonly model: string;
     private readonly thinking_config?: ClientConfig['thinking_config'];
     private tools: Map<string, ToolDefinition> = new Map();
+    private hiddenTools: Set<string> = new Set();
     private skills: Map<string, SkillDefinition> = new Map();
     private messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [];
 
@@ -70,7 +71,10 @@ export class Client {
         }
 
         for (const [name, tool] of Object.entries(builtinTools)) {
-            this.tools.set(name, tool);
+            this.tools.set(name, tool as ToolDefinition);
+            if ((INTERNAL_TOOLS as string[]).includes(name)) {
+                this.hiddenTools.add(name);
+            }
         }
 
         this.addMessage(
@@ -81,13 +85,26 @@ export class Client {
 
     // ─── Tool Registration ────────────────────────────────────────────────────
 
-    public registerTool(name: string, tool: ToolDefinition): void {
+    public registerTool(name: string, tool: ToolDefinition, options?: { hidden?: boolean }): void {
         this.tools.set(name, tool);
-        this.logger.debug(`Registered tool: ${name}`);
+        if (options?.hidden) {
+            this.hiddenTools.add(name);
+        } else {
+            this.hiddenTools.delete(name);
+        }
+        this.logger.debug(`Registered tool: ${name}${options?.hidden ? ' (hidden)' : ''}`);
     }
 
+    /** Returns only tools visible to the top-level LLM (excludes hidden/internal tools). */
     public getTools(): OpenAI.Chat.Completions.ChatCompletionTool[] {
-        return Array.from(this.tools.values()).map(t => t.definition);
+        return Array.from(this.tools.entries())
+            .filter(([name]) => !this.hiddenTools.has(name))
+            .map(([, t]) => t.definition);
+    }
+
+    /** Returns all tools including hidden ones — used by skill sub-agents. */
+    public getAllTools(): Map<string, ToolDefinition> {
+        return new Map(this.tools);
     }
 
     // ─── Skill Registration ───────────────────────────────────────────────────
@@ -125,11 +142,13 @@ export class Client {
                 },
             },
             handler: async ({ task }: Record<string, unknown>) => {
-                // Build the sub-agent's tool map — respect the whitelist if given.
+                // Build the sub-agent's tool map from ALL tools (including hidden ones).
+                // Skills are allowed to use internal tools; only the top-level LLM is restricted.
+                const allTools = this.getAllTools();
                 const subTools: Map<string, ToolDefinition> =
                     skill.tools
-                        ? new Map([...this.tools].filter(([k]) => skill.tools!.includes(k)))
-                        : new Map(this.tools);
+                        ? new Map([...allTools].filter(([k]) => skill.tools!.includes(k)))
+                        : allTools;
 
                 const systemMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
                     { role: 'system', content: skill.systemPrompt },
@@ -211,9 +230,14 @@ export class Client {
         // Tree mode: opt-in via options.treeConfig
         if (options.treeConfig !== undefined) {
             const streamFn = this.chatCompletionStream.bind(this);
+            // Pass only visible (non-hidden) tools to the top-level executor.
+            // Hidden tools remain accessible to skill sub-agents via getAllTools().
+            const visibleTools = new Map(
+                [...this.tools.entries()].filter(([name]) => !this.hiddenTools.has(name))
+            );
             const executor = new TreeExecutor(
                 streamFn,
-                this.tools,
+                visibleTools,
                 this.messages.filter(m => m.role === 'system'),
                 options.treeConfig
             );

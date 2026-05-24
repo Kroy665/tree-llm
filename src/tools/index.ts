@@ -44,6 +44,19 @@ export type BuiltinToolName = keyof typeof builtinTools;
 export const WEB_SAFE_TOOLS: BuiltinToolName[] = ['get_current_time', 'fetch_url', 'http_post'];
 
 /**
+ * Tools that are registered internally (accessible to skill sub-agents)
+ * but hidden from the top-level LLM by default.
+ * This prevents the model from calling raw execution tools directly
+ * instead of delegating to the appropriate skill.
+ */
+export const INTERNAL_TOOLS: BuiltinToolName[] = [
+    'run_python', 'run_javascript', 'run_typescript',
+    'get_sandbox_url', 'run_sandbox_command',
+    'sandbox_read_file', 'sandbox_write_file', 'sandbox_list_files',
+    'sandbox_delete_file', 'sandbox_file_exists', 'sandbox_make_dir',
+];
+
+/**
  * Register a subset (or all) of built-in tools on a Client instance.
  *
  * @example
