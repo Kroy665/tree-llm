@@ -11,6 +11,11 @@ A TypeScript agent executor that runs LLM reasoning as a **tree** — branching 
   - [Tree Mode](#tree-mode)
   - [Linear Mode](#linear-mode)
 - [Streaming Output](#streaming-output)
+- [Real-Time Observability](#real-time-observability)
+  - [createInspector](#createinspector)
+  - [AgentObserver (manual)](#agentobserver-manual)
+  - [Event types](#event-types)
+  - [Execution graph](#execution-graph)
 - [Built-in Tools](#built-in-tools)
 - [Built-in Skills](#built-in-skills)
 - [Custom Tools](#custom-tools)
@@ -212,6 +217,158 @@ for await (const chunk of client.chat(task, { treeConfig: {} })) {
 
 ---
 
+## Real-Time Observability
+
+The observer API surfaces every internal event from both the top-level tree and all skill sub-trees in real time — tokens, tool calls, retries, collapses, loops, budget hits, and the final answer.
+
+### createInspector
+
+The fastest way to see what the agent is doing. `createInspector()` returns an `AgentObserver` with a pre-wired pretty-printer that writes to stderr using ANSI colors and box-drawing characters.
+
+```typescript
+import { createInspector } from 'tree-llm';
+
+const inspector = createInspector({
+    showTokens:     true,  // stream LLM tokens inline (default: true)
+    maxArgChars:    80,    // truncate tool arg display (default: 80)
+    maxResultChars: 120,   // truncate result display (default: 120)
+    output:         process.stderr,  // default
+});
+
+for await (const chunk of client.chat(task, {
+    treeConfig: { nodeBudget: 100, depthLimit: 20 },
+    observer: inspector,      // ← pass to chat()
+})) {
+    const { type, content } = chunk.choices[0].delta;
+    if (type === 'taskComplete') process.stdout.write(content + '\n');
+}
+```
+
+**Sample inspector output:**
+
+```
+[a3f1bc2d d:0] I need to create a DOCX. I'll use docx_skill.
+→ tool  skill_docx_skill  {"task":"Create a DOCX with title My Portfolio"}
+┌─ skill: docx_skill ─────────────────────────────────────────────────
+│  task: "Create a DOCX with title My Portfolio"
+│
+│  [b7e2d1a0 d:0] I'll write Python using python-docx...
+│  → tool  run_python  {"code":"from docx import Document…"}
+│  ← ok   run_python  (success) (42 chars)  [312ms]
+│  [collapse] 1 result(s) · 180 chars · no compression
+│  [b9f3a2c1 d:1] File created. Now get the download URL.
+│  → tool  sandbox_download_url  {"path":"/home/user/out.docx"}
+│  ← ok   sandbox_download_url  {"url":"https://49983-abc.e2b.app/files?…"} (280 chars)  [89ms]
+│  [collapse] 1 result(s) · 280 chars · no compression
+│  ✅ DONE  Here is your DOCX: https://49983-abc.e2b.app/files?…
+│
+└─────────────────────────────────────────────────────────── 1.4s ─
+← ok  skill_docx_skill  Here is your DOCX: https://… (280 chars)  [1412ms]
+✅ DONE  Here is your DOCX: https://49983-abc.e2b.app/files?…
+```
+
+After the final answer, the inspector prints an ASCII execution graph (see [Execution graph](#execution-graph)).
+
+### AgentObserver (manual)
+
+For custom integrations, subscribe directly to the observer:
+
+```typescript
+import { AgentObserver } from 'tree-llm';
+import type { AgentEvent } from 'tree-llm';
+
+const observer = new AgentObserver();
+
+// Subscribe — returns an unsubscribe function
+const unsub = observer.on((event: AgentEvent) => {
+    console.log(event.type, event.nodeId, event.skillStack, event.data);
+});
+
+for await (const chunk of client.chat(task, {
+    treeConfig: {},
+    observer,
+})) { ... }
+
+unsub(); // stop listening
+```
+
+#### `AgentEvent` fields
+
+| Field | Type | Description |
+|---|---|---|
+| `type` | `AgentEventType` | Event kind (see table below) |
+| `nodeId` | `string` | ID of the node that emitted this event |
+| `parentId` | `string \| null` | ID of the node that created this node (`null` = root) |
+| `nodeDepth` | `number` | Depth within its own tree (0 = root of that tree) |
+| `skillStack` | `string[]` | Skill nesting path (`[]` = top-level, `['docx_skill']` = inside that skill) |
+| `timestamp` | `number` | `Date.now()` when emitted |
+| `data` | `Record<string, unknown>` | Event-specific payload (see table below) |
+
+### Event types
+
+| Type | When | Key `data` fields |
+|---|---|---|
+| `think:start` | ThinkNode begins LLM stream | — |
+| `think:token` | Each streamed text token | `token: string` |
+| `think:complete` | LLM stream finished | `reason: 'taskComplete' \| 'toolCalls' \| 'empty'`, `toolCallCount: number` |
+| `tool:start` | Tool about to execute | `toolName: string`, `args: object` |
+| `tool:complete` | Tool finished successfully | `toolName`, `result: string`, `durationMs: number` |
+| `tool:error` | All retries exhausted | `toolName`, `error: string`, `attempts: number` |
+| `tool:retry` | About to retry (before sleep) | `toolName`, `attempt: number`, `maxAttempts: number`, `error: string`, `nextDelayMs: number` |
+| `collapse:start` | Before merge decision | `toolResultCount: number`, `totalChars: number`, `threshold: number` |
+| `collapse:complete` | After merge | `compressed: boolean`, `charsBefore: number`, `charsAfter: number` |
+| `skill:start` | Skill sub-agent about to run | `skillName: string`, `task: string` |
+| `skill:complete` | Skill finished | `skillName`, `result: string`, `durationMs: number` |
+| `budget:exhausted` | Depth or node budget hit | `reason: 'depthLimit' \| 'nodeBudget'`, `limit: number`, `current: number` |
+| `loop:detected` | Branch pruned | `toolName: string`, `args: object` |
+| `task:complete` | Final answer | `result: string`, `summary?: string` |
+
+### Execution graph
+
+When `task:complete` fires at the top level, the inspector automatically prints a node graph showing which node created which other nodes. The `parentId` field on every event carries the exact parent-child topology:
+
+```
+─── execution graph ──────────────────────────────────────────
+#1 think@0
+├─ #2 tool: skill_docx_skill@0 ✓
+│  ├─ #4 think@0 [docx_skill]
+│  │  ├─ #5 tool: run_python@0 ✓
+│  │  └─ #6 collapse@0 ✓
+│  │     └─ #7 think@1 [docx_skill]
+│  │        ├─ #8 tool: sandbox_download_url@1 ✓
+│  │        └─ #9 collapse@1 ✓
+│  │           └─ #10 think@2 [docx_skill] ✅
+└─ #3 collapse@0 ✓
+   └─ #11 think@1 ✅
+──────────────────────────────────────────────────────────────
+```
+
+Each line shows:
+- `#N` — insertion order (useful for correlating with live output)
+- Node kind: `think` (blue), `tool: name` (yellow), `collapse` (cyan)
+- `@depth` — depth within its own tree
+- `[skill_name]` — skill scope (if inside a sub-agent)
+- Status: `✓` completed, `✗` failed, `✅` emitted `task:complete`
+
+Custom tools and skill handlers can also receive the `ObserverContext` to emit their own events:
+
+```typescript
+import type { ObserverContext } from 'tree-llm';
+
+client.registerTool('my_tool', {
+    definition: { ... },
+    handler: async (args, observerCtx, parentNodeId) => {
+        // observerCtx is non-null when an observer is active
+        observerCtx?.emit('tool:start', 'my-custom-node', 0, parentNodeId ?? null, {
+            kind: 'tool:start', toolName: 'my_tool', args,
+        });
+        // ... do work ...
+    },
+});
+```
+
+---
+
 ## Built-in Tools
 
 The `Client` constructor auto-registers all built-in tools. Sandbox/code tools are hidden from the top-level LLM by default — they are only exposed to skill sub-agents.
@@ -393,6 +550,7 @@ Returns an `AsyncGenerator<ChatChunk>`. Options:
 | Option | Type | Description |
 |---|---|---|
 | `treeConfig` | `TreeConfig` | Presence opts into tree mode. See [Tree Mode](#tree-mode). |
+| `observer` | `AgentObserver` | Opt-in event bus for real-time internals. See [Real-Time Observability](#real-time-observability). |
 | `maxDepth` | `number` | Linear mode max recursion depth (default: 5). |
 | `autoSummarize` | `boolean` | Linear mode — summarise at conversation end. |
 | `reasoningEffort` | `'low' \| 'medium' \| 'high'` | Passed to providers that support it. |
@@ -416,6 +574,25 @@ Clears all non-system messages from the conversation history.
 ### `client.getMessages()`
 
 Returns the full message history.
+
+### `createInspector(options?)`
+
+Returns an `AgentObserver` with a pre-wired terminal pretty-printer attached. Options:
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `showTokens` | `boolean` | `true` | Stream LLM tokens inline as they arrive |
+| `maxArgChars` | `number` | `80` | Truncate tool arg display |
+| `maxResultChars` | `number` | `120` | Truncate result/skill result display |
+| `output` | `NodeJS.WriteStream` | `process.stderr` | Output stream |
+
+### `new AgentObserver()`
+
+Raw event bus. Call `.on(handler)` to subscribe; returns an unsubscribe function. Pass the observer to `client.chat()` via `options.observer`. See [AgentObserver (manual)](#agentobserver-manual).
+
+### `new ObserverContext(observer, skillStack)`
+
+Contextual wrapper used internally by processors. Custom tool handlers receive one as the optional second argument. Call `.childSkill(name)` to create a child context for a nested sub-agent.
 
 ---
 
