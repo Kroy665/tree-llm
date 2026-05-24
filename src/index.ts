@@ -7,9 +7,13 @@ export { Client } from './client';
 // Export utility classes
 export { Logger } from './utils/logger';
 
-// Export built-in tools
+// Export built-in tools (auto-registered by Client — exported for advanced use)
 export { registerBuiltinTools, registerWebSafeTools, builtinTools, WEB_SAFE_TOOLS } from './tools';
 export type { BuiltinToolName } from './tools';
+
+// Export built-in skills
+export { registerBuiltinSkills, builtinSkills, codeRunnerSkill, webResearcherSkill } from './skills';
+export type { BuiltinSkillName } from './skills';
 
 // Default export for CommonJS/ESM interop
 import { Client } from './client';

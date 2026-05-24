@@ -1,5 +1,5 @@
 import type { ToolNodeData } from './nodes';
-import type { ToolDefinition } from '../client';
+import type { ToolDefinition } from '../types';
 
 export interface RetryConfig {
     retryMaxAttempts: number;

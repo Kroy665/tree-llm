@@ -11,7 +11,9 @@ import type {
     ChatOptions,
     ConversationState,
     SkillDefinition,
+    ToolDefinition,
 } from './types';
+import { builtinTools } from './tools';
 
 // ─── Provider Defaults ────────────────────────────────────────────────────────
 
@@ -32,13 +34,6 @@ export function createClientConfig(config: ProviderConfig): ClientConfig {
         timeout: config.timeout ?? defaults.timeout,
         debug: config.debug ?? false,
     };
-}
-
-// ─── Tool Definition ──────────────────────────────────────────────────────────
-
-export interface ToolDefinition {
-    definition: OpenAI.Chat.Completions.ChatCompletionTool;
-    handler: (args: Record<string, unknown>) => Promise<unknown>;
 }
 
 // ─── Client ───────────────────────────────────────────────────────────────────
@@ -72,6 +67,10 @@ export class Client {
 
         if (resolved.e2bApiKey || resolved.e2bTemplateId) {
             configureE2B({ apiKey: resolved.e2bApiKey, templateId: resolved.e2bTemplateId });
+        }
+
+        for (const [name, tool] of Object.entries(builtinTools)) {
+            this.tools.set(name, tool);
         }
 
         this.addMessage(

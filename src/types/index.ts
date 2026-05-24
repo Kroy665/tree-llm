@@ -1,3 +1,10 @@
+import type OpenAI from 'openai';
+
+export interface ToolDefinition {
+    definition: OpenAI.Chat.Completions.ChatCompletionTool;
+    handler: (args: Record<string, unknown>) => Promise<unknown>;
+}
+
 export type LLMProvider = 'openai' | 'gemini' | 'ollama';
 
 export interface ProviderConfig {

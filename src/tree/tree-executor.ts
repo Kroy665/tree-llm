@@ -1,5 +1,5 @@
 import type OpenAI from 'openai';
-import type { ToolDefinition } from '../client';
+import type { ToolDefinition } from '../types';
 import type { ChatChunk, ChatOptions, TreeConfig, TreeStats } from '../types';
 import { makeThinkNode } from './nodes';
 import { ThinkNodeProcessor } from './think-node';

@@ -1,4 +1,4 @@
-import type { ToolDefinition } from '../client';
+import type { ToolDefinition } from '../types';
 
 export const fetch_url: ToolDefinition = {
     definition: {

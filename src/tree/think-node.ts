@@ -10,7 +10,7 @@ import { CollapseNodeProcessor, type StreamFn } from './collapse-node';
 import { LoopDetector } from './loop-detector';
 import { ContextManager } from './context-manager';
 import { TASK_COMPLETE_TOOL_NAME, taskCompleteTool } from './task-complete';
-import type { ToolDefinition } from '../client';
+import type { ToolDefinition } from '../types';
 import type { ChatChunk, TreeConfig } from '../types';
 import type { BudgetTracker } from './tree-executor';
 

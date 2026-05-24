@@ -1,4 +1,4 @@
-import type { ToolDefinition } from '../client';
+import type { ToolDefinition } from '../types';
 
 export const get_current_time: ToolDefinition = {
     definition: {

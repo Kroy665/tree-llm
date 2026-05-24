@@ -1,5 +1,5 @@
 import { Sandbox } from '@e2b/code-interpreter';
-import type { ToolDefinition } from '../client';
+import type { ToolDefinition } from '../types';
 
 let _sandbox: Sandbox | null = null;
 let _e2bConfig: { apiKey?: string; templateId?: string } = {};
@@ -11,7 +11,7 @@ export function configureE2B(config: { apiKey?: string; templateId?: string }): 
     _sandbox = null;
 }
 
-async function getSandbox(): Promise<Sandbox> {
+export async function getSandbox(): Promise<Sandbox> {
     if (!_sandbox) {
         const apiKey = _e2bConfig.apiKey ?? process.env.E2B_API_KEY;
         if (!apiKey) throw new Error('E2B_API_KEY is not set. Pass e2bApiKey to the Client or set the E2B_API_KEY env var.');
