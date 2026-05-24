@@ -82,7 +82,6 @@ export const run_python: ToolDefinition = {
     },
     handler: async ({ code, timeout = 30 }: Record<string, unknown>) => {
         const sandbox = await getSandbox();
-        console.log('[run_python] code', code);
         const exec = await sandbox.runCode(code as string, {
             language: 'python',
             timeoutMs: (timeout as number) * 1000,

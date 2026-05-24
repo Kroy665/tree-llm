@@ -50,7 +50,7 @@ client.registerTool('get_weather', {
 const docxSkillContent = readFileSync('./docx_skill.md', 'utf-8');
 
 client.registerSkill('docx_skill', {
-    description: 'This skill is used to create a DOCX document.',
+    description: 'This skill is used to create a DOCX document. Use this skill when the user asks to create a DOCX document.',
     systemPrompt: docxSkillContent,
     tools: [
         'fetch_url', 'http_post',
