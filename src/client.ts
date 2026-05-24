@@ -2,6 +2,7 @@ import OpenAI from 'openai';
 import { Logger } from './utils/logger';
 import { TreeExecutor } from './tree/tree-executor';
 import { configureE2B } from './tools/code';
+import { ObserverContext } from './observer';
 import type {
     LLMProvider,
     ProviderConfig,
@@ -142,7 +143,7 @@ export class Client {
                     },
                 },
             },
-            handler: async ({ task }: Record<string, unknown>) => {
+            handler: async ({ task }: Record<string, unknown>, observerCtx?: ObserverContext | null, parentNodeId?: string | null) => {
                 // Build the sub-agent's tool map from ALL tools (including hidden ones).
                 // Skills are allowed to use internal tools; only the top-level LLM is restricted.
                 const allTools = this.getAllTools();
@@ -155,11 +156,22 @@ export class Client {
                     { role: 'system', content: skill.systemPrompt },
                 ];
 
+                // Create child context with this skill pushed onto the stack.
+                // The child context carries the observer into the skill's sub-tree.
+                const skillCtx = observerCtx?.childSkill(name) ?? null;
+
+                skillCtx?.emit('skill:start', `skill-${name}`, -1, parentNodeId ?? null, {
+                    kind: 'skill:start', skillName: name, task: task as string,
+                });
+                const startTime = Date.now();
+
                 const executor = new TreeExecutor(
                     streamFn,
                     subTools,
                     systemMessages,
-                    skill.treeConfig ?? {}
+                    skill.treeConfig ?? {},
+                    skillCtx,
+                    parentNodeId ?? null
                 );
 
                 let finalResult = '';
@@ -169,6 +181,12 @@ export class Client {
                         finalResult = content;
                     }
                 }
+
+                skillCtx?.emit('skill:complete', `skill-${name}`, -1, parentNodeId ?? null, {
+                    kind: 'skill:complete', skillName: name,
+                    result: finalResult, durationMs: Date.now() - startTime,
+                });
+
                 return finalResult || '(skill completed with no explicit result)';
             },
         });
@@ -236,11 +254,15 @@ export class Client {
             const visibleTools = new Map(
                 [...this.tools.entries()].filter(([name]) => !this.hiddenTools.has(name))
             );
+            const observerCtx = options.observer
+                ? new ObserverContext(options.observer, [])
+                : null;
             const executor = new TreeExecutor(
                 streamFn,
                 visibleTools,
                 this.messages.filter(m => m.role === 'system'),
-                options.treeConfig
+                options.treeConfig,
+                observerCtx
             );
             yield* executor.execute(content, options);
             return;

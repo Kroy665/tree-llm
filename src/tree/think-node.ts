@@ -13,6 +13,7 @@ import { TASK_COMPLETE_TOOL_NAME, taskCompleteTool } from './task-complete';
 import type { ToolDefinition } from '../types';
 import type { ChatChunk, TreeConfig } from '../types';
 import type { BudgetTracker } from './tree-executor';
+import type { ObserverContext } from '../observer';
 
 /**
  * Executes a single ThinkNode: streams the LLM, handles tool calls in
@@ -32,7 +33,9 @@ export class ThinkNodeProcessor {
         private readonly loopDetector: LoopDetector,
         private readonly contextManager: ContextManager,
         private readonly budget: BudgetTracker,
-        private readonly config: Required<TreeConfig>
+        private readonly config: Required<TreeConfig>,
+        private readonly observerCtx: ObserverContext | null = null,
+        private readonly parentId: string | null = null
     ) {
         this.retryConfig = {
             retryMaxAttempts: config.retryMaxAttempts,
@@ -45,6 +48,8 @@ export class ThinkNodeProcessor {
         this.node.status = 'running';
 
         // ── 1. Stream LLM ─────────────────────────────────────────────────────
+        this.observerCtx?.emit('think:start', this.node.id, this.node.depth, this.parentId, { kind: 'think:start' });
+
         const pendingCalls = new Map<number, AccumulatedToolCall>();
         let assistantText = '';
 
@@ -63,6 +68,7 @@ export class ThinkNodeProcessor {
 
             if (delta?.content) {
                 assistantText += delta.content;
+                this.observerCtx?.emit('think:token', this.node.id, this.node.depth, this.parentId, { kind: 'think:token', token: delta.content });
                 yield chunk;
             }
 
@@ -94,6 +100,15 @@ export class ThinkNodeProcessor {
         this.node.assistantText = assistantText;
         this.node.toolCalls = [...pendingCalls.values()];
 
+        const userToolCallsCount = this.node.toolCalls.filter(tc => tc.name !== TASK_COMPLETE_TOOL_NAME).length;
+        const completeCallFound  = this.node.toolCalls.some(tc => tc.name === TASK_COMPLETE_TOOL_NAME);
+        this.observerCtx?.emit('think:complete', this.node.id, this.node.depth, this.parentId, {
+            kind: 'think:complete',
+            reason: completeCallFound ? 'taskComplete' : userToolCallsCount > 0 ? 'toolCalls' : 'empty',
+            assistantTextLength: assistantText.length,
+            toolCallCount: userToolCallsCount,
+        });
+
         // ── 2. Detect task_complete ───────────────────────────────────────────
         const completeCall = this.node.toolCalls.find(
             tc => tc.name === TASK_COMPLETE_TOOL_NAME
@@ -102,6 +117,7 @@ export class ThinkNodeProcessor {
             const args = tryParse(completeCall.arguments) as { result: string; summary?: string };
             this.node.taskCompleteArgs = args;
             this.node.status = 'completed';
+            this.observerCtx?.emit('task:complete', this.node.id, this.node.depth, this.parentId, { kind: 'task:complete', result: args.result, summary: args.summary });
             yield {
                 choices: [{
                     delta: {
@@ -122,6 +138,7 @@ export class ThinkNodeProcessor {
             // Pure text response — tree is done (no task_complete means the model
             // just answered directly; treat as implicitly complete)
             if (assistantText.trim()) {
+                this.observerCtx?.emit('task:complete', this.node.id, this.node.depth, this.parentId, { kind: 'task:complete', result: assistantText });
                 yield {
                     choices: [{
                         delta: { content: assistantText, type: 'taskComplete' },
@@ -134,6 +151,10 @@ export class ThinkNodeProcessor {
 
         // ── 4. Budget check ───────────────────────────────────────────────────
         if (!this.budget.isDepthAllowed(this.node.depth + 1)) {
+            this.observerCtx?.emit('budget:exhausted', this.node.id, this.node.depth, this.parentId, {
+                kind: 'budget:exhausted', reason: 'depthLimit',
+                limit: this.config.depthLimit, current: this.node.depth + 1,
+            });
             yield {
                 choices: [{
                     delta: {
@@ -147,6 +168,10 @@ export class ThinkNodeProcessor {
         }
 
         if (!this.budget.canSpawn(userToolCalls.length + 2)) { // tools + collapse + think
+            this.observerCtx?.emit('budget:exhausted', this.node.id, this.node.depth, this.parentId, {
+                kind: 'budget:exhausted', reason: 'nodeBudget',
+                limit: this.config.nodeBudget, current: this.budget.getUsed(),
+            });
             yield {
                 choices: [{
                     delta: {
@@ -164,6 +189,9 @@ export class ThinkNodeProcessor {
         for (const tc of userToolCalls) {
             const args = tryParse(tc.arguments);
             if (this.loopDetector.wouldLoop(this.node.pathSignatures, tc.name, args)) {
+                this.observerCtx?.emit('loop:detected', this.node.id, this.node.depth, this.parentId, {
+                    kind: 'loop:detected', toolName: tc.name, args,
+                });
                 yield {
                     choices: [{
                         delta: {
@@ -182,24 +210,9 @@ export class ThinkNodeProcessor {
             return;
         }
 
-        // ── 6. Emit pre-execution toolCall chunks ─────────────────────────────
-        for (const tc of filteredCalls) {
-            yield {
-                choices: [{
-                    delta: {
-                        content: JSON.stringify(
-                            { tool: tc.name, args: tryParse(tc.arguments), executed: false },
-                            null, 2
-                        ),
-                        tool_calls: [{ function: { name: tc.name, arguments: tc.arguments } }],
-                        type: 'toolCall',
-                    },
-                }],
-            };
-        }
-
-        // ── 7. Spawn ToolNodes and execute in parallel ────────────────────────
-        // Build a callId → thoughtSignature lookup for round-tripping provider tokens.
+        // ── 6+7. Create ToolNodes, emit pre-execution chunks, execute in parallel ─
+        // ToolNodes are created first so tool:start carries their real IDs
+        // with parentId = this ThinkNode (the node that spawned them).
         const thoughtSignatureByCallId = new Map<string, string>();
         for (const tc of filteredCalls) {
             if (tc.thoughtSignature) thoughtSignatureByCallId.set(tc.id, tc.thoughtSignature);
@@ -216,12 +229,37 @@ export class ThinkNodeProcessor {
         );
         this.budget.trackSpawn(toolNodes.length);
 
+        for (const tn of toolNodes) {
+            this.observerCtx?.emit('tool:start', tn.id, tn.depth, this.node.id, {
+                kind: 'tool:start', toolName: tn.toolName, args: tn.toolArgs,
+            });
+            yield {
+                choices: [{
+                    delta: {
+                        content: JSON.stringify(
+                            { tool: tn.toolName, args: tn.toolArgs, executed: false },
+                            null, 2
+                        ),
+                        tool_calls: [{ function: { name: tn.toolName, arguments: tn.rawArgsStr } }],
+                        type: 'toolCall',
+                    },
+                }],
+            };
+        }
+
         const retryEvents: Array<{ attempt: number; toolName: string; error: string }> = [];
 
         const settledResults = await Promise.allSettled(
             toolNodes.map(tn =>
-                new ToolNodeProcessor(tn, this.tools, this.retryConfig).run(
-                    (attempt, toolName, error) => retryEvents.push({ attempt, toolName, error })
+                new ToolNodeProcessor(tn, this.tools, this.retryConfig, this.observerCtx).run(
+                    (attempt, toolName, error, nextDelayMs) => {
+                        retryEvents.push({ attempt, toolName, error });
+                        this.observerCtx?.emit('tool:retry', tn.id, tn.depth, this.node.id, {
+                            kind: 'tool:retry', toolName, attempt,
+                            maxAttempts: this.retryConfig.retryMaxAttempts,
+                            error, nextDelayMs,
+                        });
+                    }
                 )
             )
         );
@@ -244,6 +282,18 @@ export class ThinkNodeProcessor {
             const tn = outcome.status === 'fulfilled'
                 ? outcome.value
                 : toolNodes[settledResults.indexOf(outcome)];
+
+            if (tn.status === 'completed') {
+                this.observerCtx?.emit('tool:complete', tn.id, tn.depth, this.node.id, {
+                    kind: 'tool:complete', toolName: tn.toolName, args: tn.toolArgs,
+                    result: tn.result ?? '', durationMs: Date.now() - tn.createdAt,
+                });
+            } else {
+                this.observerCtx?.emit('tool:error', tn.id, tn.depth, this.node.id, {
+                    kind: 'tool:error', toolName: tn.toolName, args: tn.toolArgs,
+                    error: tn.error ?? 'unknown', attempts: tn.attempts,
+                });
+            }
 
             yield {
                 choices: [{
@@ -281,7 +331,9 @@ export class ThinkNodeProcessor {
         const collapseGen = new CollapseNodeProcessor(
             collapseNode,
             this.streamFn,
-            this.collapseThreshold
+            this.collapseThreshold,
+            this.observerCtx,
+            this.node.id
         ).run();
 
         let collapseStep = await collapseGen.next();
@@ -321,7 +373,9 @@ export class ThinkNodeProcessor {
             this.loopDetector,
             this.contextManager,
             this.budget,
-            this.config
+            this.config,
+            this.observerCtx,
+            collapseNode.id
         ).run();
     }
 }

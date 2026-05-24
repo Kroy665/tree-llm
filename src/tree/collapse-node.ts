@@ -1,6 +1,7 @@
 import type OpenAI from 'openai';
 import type { CollapseNodeData } from './nodes';
 import type { ChatChunk } from '../types';
+import type { ObserverContext } from '../observer';
 
 export type StreamFn = (options: {
     messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[];
@@ -28,7 +29,9 @@ export class CollapseNodeProcessor {
     constructor(
         private readonly node: CollapseNodeData,
         private readonly streamFn: StreamFn,
-        private readonly collapseThreshold: number
+        private readonly collapseThreshold: number,
+        private readonly observerCtx: ObserverContext | null = null,
+        private readonly parentId: string | null = null
     ) {}
 
     public async *run(): AsyncGenerator<ChatChunk, OpenAI.Chat.Completions.ChatCompletionMessageParam[]> {
@@ -38,6 +41,13 @@ export class CollapseNodeProcessor {
             (sum, r) => sum + r.result.length,
             0
         );
+
+        this.observerCtx?.emit('collapse:start', this.node.id, this.node.depth, this.parentId, {
+            kind: 'collapse:start',
+            toolResultCount: this.node.toolResults.length,
+            totalChars,
+            threshold: this.collapseThreshold,
+        });
 
         // Build the assistant message that precedes tool-role messages.
         // Use empty string (not null, not omitted) — Gemini requires the field present.
@@ -79,6 +89,11 @@ export class CollapseNodeProcessor {
             ];
             this.node.compressed = false;
             this.node.status = 'completed';
+
+            this.observerCtx?.emit('collapse:complete', this.node.id, this.node.depth, this.parentId, {
+                kind: 'collapse:complete', compressed: false,
+                charsBefore: totalChars, charsAfter: totalChars,
+            });
 
             yield {
                 choices: [{
@@ -134,6 +149,11 @@ export class CollapseNodeProcessor {
         ];
         this.node.compressed = true;
         this.node.status = 'completed';
+
+        this.observerCtx?.emit('collapse:complete', this.node.id, this.node.depth, this.parentId, {
+            kind: 'collapse:complete', compressed: true,
+            charsBefore: totalChars, charsAfter: compressedText.length,
+        });
 
         return this.node.mergedMessages;
     }

@@ -6,6 +6,7 @@ import { ThinkNodeProcessor } from './think-node';
 import { LoopDetector } from './loop-detector';
 import { ContextManager } from './context-manager';
 import type { StreamFn } from './collapse-node';
+import type { ObserverContext } from '../observer';
 
 // ─── Defaults ─────────────────────────────────────────────────────────────────
 
@@ -32,6 +33,8 @@ export class BudgetTracker {
     public canSpawn(count: number): boolean {
         return this.nodesSpawned + count <= this.config.nodeBudget;
     }
+
+    public getUsed(): number { return this.nodesSpawned; }
 
     public trackSpawn(count: number): void {
         this.nodesSpawned += count;
@@ -75,7 +78,9 @@ export class TreeExecutor {
         private readonly streamFn: StreamFn,
         private readonly tools: Map<string, ToolDefinition>,
         private readonly systemMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[],
-        treeConfig: TreeConfig
+        treeConfig: TreeConfig,
+        private readonly observerCtx: ObserverContext | null = null,
+        private readonly parentNodeId: string | null = null
     ) {
         this.resolvedConfig = { ...DEFAULTS, ...treeConfig };
         this.budget = new BudgetTracker(this.resolvedConfig);
@@ -102,7 +107,9 @@ export class TreeExecutor {
             this.loopDetector,
             this.contextManager,
             this.budget,
-            this.resolvedConfig
+            this.resolvedConfig,
+            this.observerCtx,
+            this.parentNodeId
         ).run();
     }
 

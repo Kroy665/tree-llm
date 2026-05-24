@@ -1,5 +1,6 @@
 import type { ToolNodeData } from './nodes';
 import type { ToolDefinition } from '../types';
+import type { ObserverContext } from '../observer';
 
 export interface RetryConfig {
     retryMaxAttempts: number;
@@ -19,11 +20,12 @@ export class ToolNodeProcessor {
     constructor(
         private readonly node: ToolNodeData,
         private readonly tools: Map<string, ToolDefinition>,
-        private readonly config: RetryConfig
+        private readonly config: RetryConfig,
+        private readonly observerCtx: ObserverContext | null = null
     ) {}
 
     public async run(
-        onRetry?: (attempt: number, toolName: string, error: string) => void
+        onRetry?: (attempt: number, toolName: string, error: string, nextDelayMs: number) => void
     ): Promise<ToolNodeData> {
         const { retryMaxAttempts, retryBaseDelayMs } = this.config;
         this.node.status = 'running';
@@ -35,7 +37,7 @@ export class ToolNodeProcessor {
                     throw new Error(`Tool "${this.node.toolName}" is not registered`);
                 }
 
-                const raw = await tool.handler(this.node.toolArgs);
+                const raw = await tool.handler(this.node.toolArgs, this.observerCtx, this.node.id);
                 this.node.result = typeof raw === 'string' ? raw : JSON.stringify(raw);
                 this.node.status = 'completed';
                 return this.node;
@@ -45,8 +47,8 @@ export class ToolNodeProcessor {
                 const errorMsg = err instanceof Error ? err.message : String(err);
 
                 if (this.node.attempts < retryMaxAttempts) {
-                    onRetry?.(this.node.attempts, this.node.toolName, errorMsg);
                     const delay = retryBaseDelayMs * Math.pow(2, this.node.attempts - 1);
+                    onRetry?.(this.node.attempts, this.node.toolName, errorMsg, delay);
                     await sleep(delay);
                 } else {
                     // Exhausted all attempts

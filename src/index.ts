@@ -15,6 +15,12 @@ export type { BuiltinToolName } from './tools';
 export { registerBuiltinSkills, builtinSkills, codeRunnerSkill, webResearcherSkill } from './skills';
 export type { BuiltinSkillName } from './skills';
 
+// Export observability API
+export { AgentObserver, ObserverContext } from './observer';
+export type { AgentEvent, AgentEventType } from './observer';
+export { createInspector } from './inspector';
+export type { InspectorOptions } from './inspector';
+
 // Default export for CommonJS/ESM interop
 import { Client } from './client';
 export default Client;

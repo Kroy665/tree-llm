@@ -1,8 +1,9 @@
 import type OpenAI from 'openai';
+import type { ObserverContext } from '../observer';
 
 export interface ToolDefinition {
     definition: OpenAI.Chat.Completions.ChatCompletionTool;
-    handler: (args: Record<string, unknown>) => Promise<unknown>;
+    handler: (args: Record<string, unknown>, observerCtx?: ObserverContext | null, parentNodeId?: string | null) => Promise<unknown>;
 }
 
 export type LLMProvider = 'openai' | 'gemini' | 'ollama';
@@ -122,4 +123,5 @@ export interface ChatOptions {
     autoSummarize?: boolean;
     reasoningEffort?: 'low' | 'medium' | 'high';
     treeConfig?: TreeConfig;    // presence opts into tree execution
+    observer?: import('../observer').AgentObserver;  // opt-in real-time observability
 }

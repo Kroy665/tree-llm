@@ -1,4 +1,4 @@
-import { Client, registerBuiltinSkills, registerBuiltinTools } from 'tree-llm';
+import { Client, registerBuiltinSkills, registerBuiltinTools, createInspector } from 'tree-llm';
 import { readFileSync } from 'fs';
 import 'dotenv/config';
 
@@ -75,26 +75,22 @@ Technical skills: Python, JavaScript, TypeScript, Node.js, React, Angular, Vue.j
 After creating the file, use sandbox_download_url to get a download link for the file and include it in your final response.
 `.trim();
 
+const inspector = createInspector({
+    showTokens: true,
+    maxArgChars: 120,
+    maxResultChars: 200,
+    output: process.stderr,
+});
+
 const main = async () => {
-    console.log('=== Tree mode (complex task) ===\n');
-    for await (const chunk of client.chat(TASK, { treeConfig: { nodeBudget: 100, depthLimit: 20 } })) {
+    process.stderr.write('=== tree-llm inspector ===\n\n');
+    for await (const chunk of client.chat(TASK, {
+        treeConfig: { nodeBudget: 100, depthLimit: 20 },
+        observer: inspector,
+    })) {
         const { type, content } = chunk.choices[0].delta;
-        if (!content) continue;
-        if (type === 'internal') {
-            process.stdout.write(content);
-        } else if (type === 'toolCall') {
-            try {
-                const obj = JSON.parse(content);
-                const tag = obj.executed === false ? '→ calling' : obj.executed === true ? '← result' : (obj.success !== undefined ? (obj.success ? '✓' : '✗') : '?');
-                console.log(`\n[tool ${tag}] ${obj.tool}`);
-            } catch { /* not JSON */ }
-        } else if (type === 'collapse') {
-            console.log(`\n[collapse]: ${content}`);
-        } else if (type === 'taskComplete') {
-            console.log('\n\n=== FINAL RESULT ===\n');
-            console.log(content);
-        } else {
-            console.log(`\n[${type}] ${content}`);
+        if (type === 'taskComplete' && content) {
+            process.stdout.write('\n=== FINAL RESULT ===\n' + content + '\n');
         }
     }
 };
