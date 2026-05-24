@@ -121,6 +121,37 @@ export const sandbox_file_exists: ToolDefinition = {
     },
 };
 
+export const sandbox_download_url: ToolDefinition = {
+    definition: {
+        type: 'function',
+        function: {
+            name: 'sandbox_download_url',
+            description:
+                'Get a pre-signed HTTPS download URL for a file inside the E2B sandbox. ' +
+                'The URL is self-contained and can be opened in a browser or shared directly. ' +
+                'Requires the sandbox to be created with secure: true.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    path: { type: 'string', description: 'Absolute path to the file inside the sandbox.' },
+                    expiresInMs: {
+                        type: 'number',
+                        description: 'How long the URL remains valid, in milliseconds. Default: 3600000 (1 hour).',
+                    },
+                },
+                required: ['path'],
+            },
+        },
+    },
+    handler: async ({ path, expiresInMs = 3_600_000 }: Record<string, unknown>) => {
+        const sandbox = await getSandbox();
+        const url = await sandbox.downloadUrl(path as string, {
+            useSignatureExpiration: expiresInMs as number,
+        });
+        return { path, url, expiresInMs };
+    },
+};
+
 export const sandbox_make_dir: ToolDefinition = {
     definition: {
         type: 'function',

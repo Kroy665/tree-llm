@@ -5,14 +5,14 @@ export type { SkillDefinition } from '../types';
 export { get_current_time } from './datetime';
 export { fetch_url, http_post } from './web';
 export { run_python, run_javascript, run_typescript, get_sandbox_url, run_sandbox_command } from './code';
-export { sandbox_read_file, sandbox_write_file, sandbox_list_files, sandbox_delete_file, sandbox_file_exists, sandbox_make_dir } from './sandbox-fs';
+export { sandbox_read_file, sandbox_write_file, sandbox_list_files, sandbox_delete_file, sandbox_file_exists, sandbox_make_dir, sandbox_download_url } from './sandbox-fs';
 
 // ─── Tool groups ──────────────────────────────────────────────────────────────
 
 import { get_current_time } from './datetime';
 import { fetch_url, http_post } from './web';
 import { run_python, run_javascript, run_typescript, get_sandbox_url, run_sandbox_command } from './code';
-import { sandbox_read_file, sandbox_write_file, sandbox_list_files, sandbox_delete_file, sandbox_file_exists, sandbox_make_dir } from './sandbox-fs';
+import { sandbox_read_file, sandbox_write_file, sandbox_list_files, sandbox_delete_file, sandbox_file_exists, sandbox_make_dir, sandbox_download_url } from './sandbox-fs';
 
 export const builtinTools = {
     // DateTime
@@ -36,6 +36,7 @@ export const builtinTools = {
     sandbox_delete_file,
     sandbox_file_exists,
     sandbox_make_dir,
+    sandbox_download_url,
 } as const;
 
 export type BuiltinToolName = keyof typeof builtinTools;
@@ -53,7 +54,7 @@ export const INTERNAL_TOOLS: BuiltinToolName[] = [
     'run_python', 'run_javascript', 'run_typescript',
     'get_sandbox_url', 'run_sandbox_command',
     'sandbox_read_file', 'sandbox_write_file', 'sandbox_list_files',
-    'sandbox_delete_file', 'sandbox_file_exists', 'sandbox_make_dir',
+    'sandbox_delete_file', 'sandbox_file_exists', 'sandbox_make_dir', 'sandbox_download_url',
 ];
 
 /**

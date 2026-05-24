@@ -12,6 +12,7 @@ export interface ProviderConfig {
     llmApiKey?: string;
     e2bApiKey?: string;
     e2bTemplateId?: string;
+    e2bSecure?: boolean;
     model?: string;
     baseUrl?: string;
     timeout?: number;
@@ -22,6 +23,7 @@ export interface ClientConfig {
     llmApiKey: string;
     e2bApiKey?: string;
     e2bTemplateId?: string;
+    e2bSecure?: boolean;
     model: string;
     baseUrl?: string;
     timeout?: number;

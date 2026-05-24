@@ -11,6 +11,7 @@ const client = new Client({
     model: 'gemini-3.5-flash',
     llmApiKey: process.env.GEMINI_API_KEY!,
     e2bApiKey: process.env.E2B_API_KEY!,
+    e2bSecure: true,  // required for sandbox_download_url
     systemMessages: `You are a helpful autonomous agent. Today is ${dateStr}, ${timeStr} IST. The current year is 2026. Use this date whenever you need the current date — do NOT call get_current_time under any circumstance.`,
 });
 
@@ -56,16 +57,22 @@ client.registerSkill('docx_skill', {
         'run_python', 'run_javascript', 'run_typescript', 'get_sandbox_url', 'run_sandbox_command',
         'sandbox_read_file', 'sandbox_write_file', 'sandbox_list_files',
         'sandbox_delete_file', 'sandbox_file_exists', 'sandbox_make_dir',
+        'sandbox_download_url',
     ],
 });
 
 // ── Task ───────────────────────────────────────────────────────────────────────
 
 const TASK = `
-create a docx file with the following content:
-1. A title "My Document"
-2. A paragraph with some text
-3. A table with some data
+Create a DOCX file with the following content:
+Title: "My Portfolio"
+
+Name: Koushik Roy, 32, M.Sc Math, B.Sc Math
+Experience: 10 years
+Soft skills: Communication, Teamwork, Leadership
+Technical skills: Python, JavaScript, TypeScript, Node.js, React, Angular, Vue.js, Express, NestJS, FastAPI, Django, Flask, PostgreSQL, MySQL, MongoDB, Redis, Docker, Kubernetes, AWS, GCP, Azure, Git, GitHub, GitLab, Bitbucket, Jenkins, CircleCI, TravisCI, Docker, Kubernetes, AWS, GCP, Azure, Git, GitHub, GitLab, Bitbucket, Jenkins, CircleCI, TravisCI
+
+After creating the file, use sandbox_download_url to get a download link for the file and include it in your final response.
 `.trim();
 
 const main = async () => {

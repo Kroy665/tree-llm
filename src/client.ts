@@ -29,6 +29,7 @@ export function createClientConfig(config: ProviderConfig): ClientConfig {
         llmApiKey: config.llmApiKey ?? 'ollama',
         e2bApiKey: config.e2bApiKey,
         e2bTemplateId: config.e2bTemplateId,
+        e2bSecure: config.e2bSecure,
         model: config.model ?? defaults.model,
         baseUrl: config.baseUrl ?? defaults.baseUrl,
         timeout: config.timeout ?? defaults.timeout,
@@ -67,7 +68,7 @@ export class Client {
         });
 
         if (resolved.e2bApiKey || resolved.e2bTemplateId) {
-            configureE2B({ apiKey: resolved.e2bApiKey, templateId: resolved.e2bTemplateId });
+            configureE2B({ apiKey: resolved.e2bApiKey, templateId: resolved.e2bTemplateId, secure: resolved.e2bSecure });
         }
 
         for (const [name, tool] of Object.entries(builtinTools)) {

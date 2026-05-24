@@ -2,9 +2,9 @@ import { Sandbox } from '@e2b/code-interpreter';
 import type { ToolDefinition } from '../types';
 
 let _sandbox: Sandbox | null = null;
-let _e2bConfig: { apiKey?: string; templateId?: string } = {};
+let _e2bConfig: { apiKey?: string; templateId?: string; secure?: boolean } = {};
 
-export function configureE2B(config: { apiKey?: string; templateId?: string }): void {
+export function configureE2B(config: { apiKey?: string; templateId?: string; secure?: boolean }): void {
     _e2bConfig = config;
     // Reset sandbox so the next call picks up the new config
     _sandbox?.kill().catch(() => {});
@@ -18,6 +18,7 @@ export async function getSandbox(): Promise<Sandbox> {
         _sandbox = await Sandbox.create({
             apiKey,
             ...(_e2bConfig.templateId && { template: _e2bConfig.templateId }),
+            ...(_e2bConfig.secure !== undefined && { secure: _e2bConfig.secure }),
         });
     }
     return _sandbox;
@@ -81,6 +82,7 @@ export const run_python: ToolDefinition = {
     },
     handler: async ({ code, timeout = 30 }: Record<string, unknown>) => {
         const sandbox = await getSandbox();
+        console.log('[run_python] code', code);
         const exec = await sandbox.runCode(code as string, {
             language: 'python',
             timeoutMs: (timeout as number) * 1000,
