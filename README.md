@@ -23,9 +23,20 @@ A TypeScript agent executor that runs LLM reasoning as a **tree** — branching 
 
 ## Installation
 
+Install directly from GitHub (no npm publish needed):
+
 ```bash
-npm install tree-llm
+npm install github:kroy665/tree-llm
 ```
+
+Or pin to a specific commit or tag:
+
+```bash
+npm install github:kroy665/tree-llm#main
+npm install github:kroy665/tree-llm#v1.0.0
+```
+
+The package compiles itself automatically after install (`prepare` script runs `tsc`), so the TypeScript source is built on the consumer's machine.
 
 Requires Node.js >= 18.
 
