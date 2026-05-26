@@ -4,6 +4,8 @@ import type { ObserverContext } from '../observer';
 export interface ToolDefinition {
     definition: OpenAI.Chat.Completions.ChatCompletionTool;
     handler: (args: Record<string, unknown>, observerCtx?: ObserverContext | null, parentNodeId?: string | null) => Promise<unknown>;
+    /** Per-tool repeat limit. Overrides TreeConfig.maxRepeatsPerSignature for this tool. */
+    maxRepeats?: number;
 }
 
 export type LLMProvider = 'openai' | 'gemini' | 'ollama';

@@ -16,10 +16,11 @@ export class LoopDetector {
     public wouldLoop(
         pathSignatures: Map<string, number>,
         toolName: string,
-        args: Record<string, unknown>
+        args: Record<string, unknown>,
+        maxRepeats?: number
     ): boolean {
         const sig = this.signature(toolName, args);
-        return (pathSignatures.get(sig) ?? 0) >= this.maxRepeats;
+        return (pathSignatures.get(sig) ?? 0) >= (maxRepeats ?? this.maxRepeats);
     }
 
     /**

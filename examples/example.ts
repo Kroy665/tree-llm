@@ -1,6 +1,7 @@
 import { Client, registerBuiltinSkills, registerBuiltinTools, createInspector } from 'tree-llm';
 import { readFileSync } from 'fs';
 import 'dotenv/config';
+import webSearchTool from './webSearchTool';
 
 const now = new Date();
 const dateStr = now.toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Kolkata' });
@@ -45,6 +46,11 @@ client.registerTool('get_weather', {
     },
 });
 
+client.registerTool('web_search', webSearchTool);
+
+
+
+
 // ── Register custom skills ─────────────────────────────────────────────────────
 
 const docxSkillContent = readFileSync('./docx_skill.md', 'utf-8');
@@ -64,15 +70,7 @@ client.registerSkill('docx_skill', {
 // ── Task ───────────────────────────────────────────────────────────────────────
 
 const TASK = `
-Create a DOCX file with the following content:
-Title: "My Portfolio"
-
-Name: Koushik Roy, 32, M.Sc Math, B.Sc Math
-Experience: 10 years
-Soft skills: Communication, Teamwork, Leadership
-Technical skills: Python, JavaScript, TypeScript, Node.js, React, Angular, Vue.js, Express, NestJS, FastAPI, Django, Flask, PostgreSQL, MySQL, MongoDB, Redis, Docker, Kubernetes, AWS, GCP, Azure, Git, GitHub, GitLab, Bitbucket, Jenkins, CircleCI, TravisCI, Docker, Kubernetes, AWS, GCP, Azure, Git, GitHub, GitLab, Bitbucket, Jenkins, CircleCI, TravisCI
-
-After creating the file, use sandbox_download_url to get a download link for the file and include it in your final response.
+What's trending in AI this week? Search and summarise the top stories.
 `.trim();
 
 const inspector = createInspector({

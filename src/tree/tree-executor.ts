@@ -16,7 +16,7 @@ const DEFAULTS: Required<TreeConfig> = {
     collapseThreshold: 4000,
     retryMaxAttempts: 3,
     retryBaseDelayMs: 1000,
-    maxRepeatsPerSignature: 2,
+    maxRepeatsPerSignature: 1,
 };
 
 // ─── BudgetTracker ────────────────────────────────────────────────────────────

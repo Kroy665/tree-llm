@@ -188,7 +188,8 @@ export class ThinkNodeProcessor {
         const filteredCalls: AccumulatedToolCall[] = [];
         for (const tc of userToolCalls) {
             const args = tryParse(tc.arguments);
-            if (this.loopDetector.wouldLoop(this.node.pathSignatures, tc.name, args)) {
+            const toolMaxRepeats = this.tools.get(tc.name)?.maxRepeats;
+            if (this.loopDetector.wouldLoop(this.node.pathSignatures, tc.name, args, toolMaxRepeats)) {
                 this.observerCtx?.emit('loop:detected', this.node.id, this.node.depth, this.parentId, {
                     kind: 'loop:detected', toolName: tc.name, args,
                 });
